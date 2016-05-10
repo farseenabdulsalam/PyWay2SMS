@@ -30,8 +30,9 @@ import random
 import pathlib
 import configparser
 import requests
-import exceptions
 import argparse
+
+import AppExceptions
 
 VERSION = '1.0 beta'
 
@@ -48,7 +49,7 @@ SMS_URL = 'http://site21.way2sms.com/smstoss.action'
 def init_config():
     CONFIG_NAME='way2sms.cfg'
     if not pathlib.Path(CONFIG_NAME).exists():
-        raise exceptions.ConfigFileNotFoundError(CONFIG_NAME,
+        raise AppExceptions.ConfigFileNotFoundError(CONFIG_NAME,
                                                  pathlib.Path(CONFIG_NAME).parent)
     try:
         config = configparser.ConfigParser()
@@ -57,13 +58,13 @@ def init_config():
         USERNAME = config['DEFAULT']['USERNAME']
         PASSWORD = config['DEFAULT']['PASSWORD']
     except KeyError as e:
-        raise exceptions.ConfigFileInvalidError(CONFIG_NAME) from e
+        raise AppExceptions.ConfigFileInvalidError(CONFIG_NAME) from e
 
 ##### Send SMS
 def send_sms(number, message):
 
     if USERNAME is None or PASSWORD is None:
-        raise exceptions.ConfigNotInitializedError()
+        raise AppExceptions.ConfigNotInitializedError()
 
     response = requests.post(AUTH_URL,
                 data={'username': USERNAME, 'password': PASSWORD},
@@ -71,7 +72,7 @@ def send_sms(number, message):
 
     # If login was successful, cookie JSESSIONID will be set
     if not response.ok or 'JSESSIONID' not in response.cookies:
-        raise exceptions.Way2SmsAuthError(USERNAME)
+        raise AppExceptions.Way2SmsAuthError(USERNAME)
 
     # Token is an extract of JSESSIONID
     # It needs to be posted to SMS_URL while sending SMS
@@ -85,7 +86,7 @@ def send_sms(number, message):
     response = requests.post(SMS_URL,data=body,cookies=response.cookies)
 
     if response.text.find('successfully') == -1:
-        raise exceptions.MessageSendingFailedError(
+        raise AppExceptions.MessageSendingFailedError(
             "Number:{} Message:'{}'".format(number,message))
 
 
@@ -111,7 +112,7 @@ def main():
             info("Sending to '{}' .. ".format(number),end='')
             send_sms(number,args.message)
             info("Success.")
-    except exceptions.PyWay2SmsError as ex:
+    except AppExceptions.PyWay2SmsError as ex:
         info("Failed")
         print("Error: ",end='',file=sys.stderr)
         print(ex,file=sys.stderr)
