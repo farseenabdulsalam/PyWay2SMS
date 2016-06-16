@@ -34,11 +34,12 @@ import argparse
 
 import AppExceptions
 
-VERSION = '1.0 beta'
+VERSION = '1.2 beta'
 
-##### Some global vars (are they scary?)
-USERNAME = None
-PASSWORD = None
+# Should split to messages of 140 chars each
+CHAR_LIMIT = 140
+ELLIPSIS = " .. "
+
 DEBUG = True
 
 AUTH_URL = 'http://site21.way2sms.com/Login1.action'
@@ -54,25 +55,26 @@ def init_config():
     try:
         config = configparser.ConfigParser()
         config.read('way2sms.cfg')
-        global USERNAME, PASSWORD
-        USERNAME = config['DEFAULT']['USERNAME']
-        PASSWORD = config['DEFAULT']['PASSWORD']
+        username = config['DEFAULT']['USERNAME']
+        password = config['DEFAULT']['PASSWORD']
+        return username,password
     except KeyError as e:
         raise AppExceptions.ConfigFileInvalidError(CONFIG_NAME) from e
 
 ##### Send SMS
-def send_sms(number, message):
-
-    if USERNAME is None or PASSWORD is None:
-        raise AppExceptions.ConfigNotInitializedError()
+def send_sms(number, message, username, password):
+    """
+    :type message: str
+    :type number : str
+    """
 
     response = requests.post(AUTH_URL,
-                data={'username': USERNAME, 'password': PASSWORD},
+                data={'username': username, 'password': password},
                 allow_redirects=False)
 
     # If login was successful, cookie JSESSIONID will be set
     if not response.ok or 'JSESSIONID' not in response.cookies:
-        raise AppExceptions.Way2SmsAuthError(USERNAME)
+        raise AppExceptions.Way2SmsAuthError(username)
 
     # Token is an extract of JSESSIONID
     # It needs to be posted to SMS_URL while sending SMS
@@ -88,6 +90,32 @@ def send_sms(number, message):
     if response.text.find('successfully') == -1:
         raise AppExceptions.MessageSendingFailedError(
             "Number:{} Message:'{}'".format(number,message))
+
+##### Split message into array of strings of length CHAR_LIMIT
+def split_message(message, char_limit, ellipsis):
+
+    message_list = [message]
+    if len(message) > char_limit:
+        # For first part of message, we do not prepend ellipsis only append.
+        char_limit_first = char_limit - len(ellipsis)
+        # For subsequent parts message, we prepend and append ellipsis
+        char_limit_rest = char_limit - 2*len(ellipsis)
+
+        message_list = [ message[0:char_limit_first] + ellipsis ]
+        last_index = char_limit_first
+        # // --> floor division
+        for i in range( 1, len(message)//char_limit_rest ):
+            message_list += [ ellipsis +\
+                              message[last_index:last_index+char_limit_rest] +\
+                              ellipsis
+                            ]
+            last_index += char_limit_rest
+        else:
+            message_list += [ ellipsis +\
+                              message[last_index:]
+                            ]
+    return message_list
+
 
 
 
@@ -105,13 +133,20 @@ def main():
             sys.stdout.flush()
 
     try:
-        init_config()
+        username,password = init_config()
         info("Configuration Read")
-        info("Sending message : '{}' ".format(args.message))
         for number in args.numbers:
             info("Sending to '{}' .. ".format(number),end='')
-            send_sms(number,args.message)
-            info("Success.")
+            message_split = split_message(args.message, CHAR_LIMIT, ELLIPSIS)
+            total_parts = len(message_split)
+            part_index = 1
+            for message in message_split:
+                info("Sending part {} of {}".format(part_index,total_parts))
+                info(message)
+                part_index += 1
+                send_sms(number,message, username, password)
+                info("Success.")
+
     except AppExceptions.PyWay2SmsError as ex:
         info("Failed")
         print("Error: ",end='',file=sys.stderr)
