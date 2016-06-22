@@ -1,4 +1,4 @@
-#!/bin/env python3
+#!/usr/bin/env python3
 
 # Written by Farzeen
 # farseenabdulsalam (at) gmail (dot) com
